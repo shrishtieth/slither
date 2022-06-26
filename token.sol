@@ -314,13 +314,17 @@ library Counters {
     }
 }
 
-contract TokenDistribution{
+contract TokenDistribution is Ownable{
 
    using Counters for Counters.Counter;
    Counters.Counter public depositId;
    Counters.Counter public withdrawId;
 
    mapping(address => bool) public canBeUsedAsCurrency;
+   address public babyDogeCoin;
+
+   address public burnWallet;
+   address public devWallet;
    
    struct Deposit{
        uint256 amount;
@@ -330,12 +334,11 @@ contract TokenDistribution{
 
     struct Withdraw{
        uint256 amount;
-       address currency;
        address user;
     }
 
     mapping(uint256 => Deposit) public idToDeposit;
-    mapping(uint256 => Withdraw) public idToWithdraw;+
+    mapping(uint256 => Withdraw) public idToWithdraw;
 
    
 
@@ -344,8 +347,27 @@ contract TokenDistribution{
 
    mapping(uint256 => bool) public nonceUsed;
 
-   event TokensDeposited(address user, uint256 amount);
-   event Withdrawn(address user, uint256 amount);
+   event TokensDeposited(address indexed user, uint256 indexed amount, uint256 indexed id);
+   event Withdrawn(address indexed user, uint256 indexed amount, uint256 indexed id);
+   event CurrencyUpdated(address token, bool canBeUsed);
+   event SignerUpdated(address signer);
+
+   constructor(address coin, address burn, address dev){
+       babyDogeCoin =  coin;
+       burnWallet = burn;
+       devWallet = dev; 
+       canBeUsedAsCurrency[coin] = true;
+   }
+
+   function updateCurrency(address token, bool canBeUsed) external onlyOwner{
+       canBeUsedAsCurrency[token] = canBeUsed;
+       emit CurrencyUpdated(token, canBeUsed);
+   }
+
+   function updateSigner(address signer_) external onlyOwner{
+       signer = signer_;
+       emit SignerUpdated(signer_);
+   }
 
    function depositTokens(address token, uint256 amount, 
    uint256 nonce, bytes memory sign ) external payable {
@@ -360,7 +382,15 @@ contract TokenDistribution{
      else{
       IERC20(token).transferFrom(msg.sender, treasury, amount);
      }
-     
+     uint256 deposit = depositId.current();
+      idToDeposit[deposit] = Deposit({
+        amount : amount,
+        currency :  token,
+        user : msg.sender
+      });
+      
+      depositId.increment();
+      emit TokensDeposited(msg.sender, amount, deposit);
      
    }
 
@@ -426,5 +456,27 @@ contract TokenDistribution{
     {
         return signer == ECDSA.recover(hash, signature);
     }
+
+     function withdrawTokens(uint256 amount, 
+     uint256 nonce, bytes memory sign ) external payable {
+   
+     require(nonceUsed[nonce]==false,"Nonce Used");
+     bytes32 hash = hashTransaction(babyDogeCoin, nonce, msg.sender, amount, "withdraw");
+     require(isValidData(hash, sign),"Invalid Entry");
+    
+      IERC20(babyDogeCoin).transferFrom(treasury, msg.sender, amount);
+
+      uint256 withdraw = withdrawId.current();
+      idToWithdraw[withdraw] = Withdraw({
+        amount : amount,
+        user : msg.sender
+      });
+      
+      withdrawId.increment();
+      
+      emit Withdrawn(msg.sender, amount, withdraw);
+     
+     
+   }
 
 }
