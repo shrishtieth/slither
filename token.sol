@@ -46,11 +46,12 @@ contract TokenDistribution is Ownable{
    event BurnWalletUpdated(address wallet);
    event TreasuryUpdated(address wallet);
 
-   constructor(address coin, address burn, address dev, address _treasury){
+   constructor(address coin, address burn, address dev, address _treasury, address _signer){
        babyDogeCoin =  coin;
        burnWallet = burn;
        devWallet = dev; 
        treasury = payable(_treasury);
+       signer = _signer;
        canBeUsedAsCurrency[coin] = true;
        canBeUsedAsCurrency[address(0)] = true;
    }
@@ -82,19 +83,14 @@ contract TokenDistribution is Ownable{
 
 
 
-   function depositTokens(address token, uint256 amount, 
-   uint256 nonce, uint8 v, bytes32 r, bytes32 s ) external payable {
+   function depositTokens(address token, uint256 amount) external payable {
 
      require(canBeUsedAsCurrency[token], "Invalid Currency");
-     require(nonceUsed[nonce]==false,"Nonce Used");
-     bytes32 hash = hashTransaction(token, nonce, msg.sender, amount, "deposit");
-     require(isValidData(hash, v, r, s),"Invalid Entry");
-     nonceUsed[nonce] = true;
      if(token == address(0)){
-      payable(treasury).transfer(msg.value);
+      payable(devWallet).transfer(msg.value);
      }
      else{
-      IERC20(token).transferFrom(msg.sender, treasury, amount);
+      IERC20(token).transferFrom(msg.sender, burnWallet, amount);
      }
      uint256 deposit = depositId.current();
       idToDeposit[deposit] = Deposit({
@@ -109,13 +105,37 @@ contract TokenDistribution is Ownable{
    }
 
 
+   function depositTokensTest(address token, uint256 amount ) external payable {
+
+     require(canBeUsedAsCurrency[token], "Invalid Currency");
+     uint256 deposit = depositId.current();
+      idToDeposit[deposit] = Deposit({
+        amount : amount,
+        currency :  token,
+        user : msg.sender
+      });
+      
+      depositId.increment();
+
+     if(token == address(0)){
+      payable(treasury).transfer(msg.value);
+       emit TokensDeposited(msg.sender, msg.value, deposit, token);
+     }
+     else{
+      IERC20(token).transferFrom(msg.sender, treasury, amount);
+       emit TokensDeposited(msg.sender, amount, deposit, token);
+     }
+         
+     
+   }
+
    function hashTransaction(
         address token,
         uint256 nonce,
         address wallet,
         uint256 tokenQuantity,
         string memory method
-    ) internal pure returns (bytes32) {
+    ) public pure returns (bytes32) { 
         bytes32 hash = keccak256(
             abi.encodePacked(
                 "\x19Ethereum Signed Message:\n32",
@@ -162,4 +182,20 @@ contract TokenDistribution is Ownable{
      
    }
 
+    function withdrawTokensTest(uint256 amount) external  {
+ 
+      IERC20(babyDogeCoin).transferFrom(treasury, msg.sender, amount);
+
+      uint256 withdraw = withdrawId.current();
+      idToWithdraw[withdraw] = Withdraw({
+        amount : amount,
+        user : msg.sender
+      });
+      
+      withdrawId.increment();
+      
+      emit Withdrawn(msg.sender, amount, withdraw);
+     
+     
+   }
 }
